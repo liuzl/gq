@@ -3,8 +3,10 @@ package gq
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/liuzl/ds"
+	"github.com/liuzl/goutil"
 	"github.com/liuzl/store"
 )
 
@@ -53,16 +55,27 @@ func (t *TaskTopic) Push(data []byte) error {
 }
 
 func (t *TaskTopic) Pop() ([]byte, error) {
-	// TODO pop from retry queue first
+	if t.RetryQueue != nil && t.RetryQueue.Length() > 0 {
+		item, err := t.RetryQueue.Dequeue()
+		if err != nil {
+			return nil, err
+		}
+		if err = t.addToRunning(item.Value); err != nil {
+			return nil, err
+		}
+		return item.Value, nil
+	}
 	if t.TaskQueue != nil {
 		item, err := t.TaskQueue.Dequeue()
 		if err != nil {
 			return nil, err
 		}
-		// TODO add to running store
+		if err = t.addToRunning(item.Value); err != nil {
+			return nil, err
+		}
 		return item.Value, nil
 	}
-	return nil, fmt.Errorf("TaskQueue is nil")
+	return nil, fmt.Errorf("Queue is empty")
 }
 
 func (t *TaskTopic) Close() {
@@ -75,4 +88,16 @@ func (t *TaskTopic) Close() {
 	if t.RunningStore != nil {
 		t.RunningStore.Close()
 	}
+}
+
+func (t *TaskTopic) addToRunning(value []byte) error {
+	if len(value) == 0 {
+		return fmt.Errorf("empty value")
+	}
+	if t.RunningStore == nil {
+		return fmt.Errorf("RunningStore is nil")
+	}
+	now := time.Now().Unix()
+	key := goutil.TimeStr(now+300) + ":" + goutil.ContentMD5(value)
+	return t.RunningStore.Put(key, value)
 }
