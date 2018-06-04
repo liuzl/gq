@@ -13,29 +13,30 @@ import (
 )
 
 type TaskTopic struct {
-	TaskQueue    *ds.Queue
-	RetryQueue   *ds.Queue
-	RunningStore *store.LevelStore
+	Name    string `json:"name"`
+	Dir     string `json:dir`
+	Timeout int64  `json:timeout`
 
-	dir     string
-	timeout int64
-	wg      *sync.WaitGroup
-	exitCh  chan bool
+	queue        *ds.Queue
+	retryQueue   *ds.Queue
+	runningStore *store.LevelStore
+	wg           *sync.WaitGroup
+	exit         chan bool
 }
 
-func NewTaskTopic(dir string, wg *sync.WaitGroup) (*TaskTopic, error) {
-	t := &TaskTopic{dir: dir, timeout: 300, wg: wg, exitCh: make(chan bool)}
+func NewTaskTopic(name, dir string, wg *sync.WaitGroup) (*TaskTopic, error) {
+	t := &TaskTopic{Name: name, Dir: dir, Timeout: 300, wg: wg, exit: make(chan bool)}
 	var err error
-	queueDir := filepath.Join(dir, "queue")
-	if t.TaskQueue, err = ds.OpenQueue(queueDir); err != nil {
+	queueDir := filepath.Join(dir, name, "queue")
+	if t.queue, err = ds.OpenQueue(queueDir); err != nil {
 		return nil, err
 	}
-	retryDir := filepath.Join(dir, "retry_queue")
-	if t.RetryQueue, err = ds.OpenQueue(retryDir); err != nil {
+	retryDir := filepath.Join(dir, name, "retry_queue")
+	if t.retryQueue, err = ds.OpenQueue(retryDir); err != nil {
 		return nil, err
 	}
-	storeDir := filepath.Join(dir, "running")
-	if t.RunningStore, err = store.NewLevelStore(storeDir); err != nil {
+	storeDir := filepath.Join(dir, name, "running")
+	if t.runningStore, err = store.NewLevelStore(storeDir); err != nil {
 		return nil, err
 	}
 
@@ -45,16 +46,14 @@ func NewTaskTopic(dir string, wg *sync.WaitGroup) (*TaskTopic, error) {
 	return t, nil
 }
 
-func (t *TaskTopic) Type() string {
-	return "TASK"
-}
+func (t *TaskTopic) Type() string { return "TASK" }
 
 func (t *TaskTopic) Push(data []byte) error {
-	if t.TaskQueue != nil {
-		_, err := t.TaskQueue.Enqueue(data)
+	if t.queue != nil {
+		_, err := t.queue.Enqueue(data)
 		return err
 	}
-	return fmt.Errorf("TaskQueue is nil")
+	return fmt.Errorf("queue is nil")
 }
 
 func (t *TaskTopic) pop(q *ds.Queue) (string, []byte, error) {
@@ -63,7 +62,7 @@ func (t *TaskTopic) pop(q *ds.Queue) (string, []byte, error) {
 		return "", nil, err
 	}
 	now := time.Now().Unix()
-	key := goutil.TimeStr(now+t.timeout) + ":" + goutil.ContentMD5(item.Value)
+	key := goutil.TimeStr(now+t.Timeout) + ":" + goutil.ContentMD5(item.Value)
 	if err = t.addToRunning(key, item.Value); err != nil {
 		return "", nil, err
 	}
@@ -71,34 +70,34 @@ func (t *TaskTopic) pop(q *ds.Queue) (string, []byte, error) {
 }
 
 func (t *TaskTopic) Pop() (string, []byte, error) {
-	if t.RetryQueue != nil && t.RetryQueue.Length() > 0 {
-		return t.pop(t.RetryQueue)
+	if t.retryQueue != nil && t.retryQueue.Length() > 0 {
+		return t.pop(t.retryQueue)
 	}
-	if t.TaskQueue != nil && t.TaskQueue.Length() > 0 {
-		return t.pop(t.TaskQueue)
+	if t.queue != nil && t.queue.Length() > 0 {
+		return t.pop(t.queue)
 	}
 	return "", nil, fmt.Errorf("Queue is empty")
 }
 
 func (t *TaskTopic) Confirm(key string) error {
-	if t.RunningStore == nil {
-		return fmt.Errorf("RunningStore is nil")
+	if t.runningStore == nil {
+		return fmt.Errorf("runningStore is nil")
 	}
-	return t.RunningStore.Delete(key)
+	return t.runningStore.Delete(key)
 }
 
 func (t *TaskTopic) Close() {
-	if t.exitCh != nil {
-		t.exitCh <- true
+	if t.exit != nil {
+		t.exit <- true
 	}
-	if t.TaskQueue != nil {
-		t.TaskQueue.Close()
+	if t.queue != nil {
+		t.queue.Close()
 	}
-	if t.RetryQueue != nil {
-		t.RetryQueue.Close()
+	if t.retryQueue != nil {
+		t.retryQueue.Close()
 	}
-	if t.RunningStore != nil {
-		t.RunningStore.Close()
+	if t.runningStore != nil {
+		t.runningStore.Close()
 	}
 }
 
@@ -106,28 +105,28 @@ func (t *TaskTopic) addToRunning(key string, value []byte) error {
 	if len(value) == 0 {
 		return fmt.Errorf("empty value")
 	}
-	if t.RunningStore == nil {
-		return fmt.Errorf("RunningStore is nil")
+	if t.runningStore == nil {
+		return fmt.Errorf("runningStore is nil")
 	}
-	return t.RunningStore.Put(key, value)
+	return t.runningStore.Put(key, value)
 }
 
 func (t *TaskTopic) retry() {
 	defer t.wg.Done()
 	for {
 		select {
-		case <-t.exitCh:
+		case <-t.exit:
 			return
 		default:
 			now := time.Now().Format("20060102030405")
-			t.RunningStore.ForEach(&util.Range{Limit: []byte(now)},
+			t.runningStore.ForEach(&util.Range{Limit: []byte(now)},
 				func(key, value []byte) (bool, error) {
-					if _, err := t.RetryQueue.Enqueue(value); err != nil {
+					if _, err := t.retryQueue.Enqueue(value); err != nil {
 						return false, err
 					}
 					return true, nil
 				})
-			goutil.Sleep(5*time.Second, t.exitCh)
+			goutil.Sleep(5*time.Second, t.exit)
 		}
 	}
 }

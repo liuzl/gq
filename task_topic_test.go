@@ -8,9 +8,8 @@ import (
 )
 
 func TestTaskTopic(t *testing.T) {
-	var dir = "crawl"
 	var wg sync.WaitGroup
-	topic, err := NewTaskTopic(dir, &wg)
+	topic, err := NewTaskTopic("task", "crawl", &wg)
 	if err != nil {
 		t.Error(err)
 	}
@@ -18,8 +17,8 @@ func TestTaskTopic(t *testing.T) {
 	for i := 0; i < 10000; i++ {
 		topic.Push([]byte("hello world"))
 	}
-	t.Log(topic.TaskQueue.Length())
-	t.Log(topic.RetryQueue.Length())
+	t.Log(topic.queue.Length())
+	t.Log(topic.retryQueue.Length())
 	for i := 0; i < 10000; i++ {
 		key, d, err := topic.Pop()
 		if err != nil && err != ds.ErrEmpty {
@@ -29,11 +28,11 @@ func TestTaskTopic(t *testing.T) {
 			t.Error(err)
 		}
 		if i == 5000 {
-			t.Log(topic.TaskQueue.Length())
+			t.Log(topic.queue.Length())
 			t.Log(key)
 			t.Log(string(d))
 		}
 	}
-	t.Log(topic.TaskQueue.Length())
-	t.Log(topic.RetryQueue.Length())
+	t.Log(topic.queue.Length())
+	t.Log(topic.retryQueue.Length())
 }

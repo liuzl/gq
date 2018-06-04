@@ -2,7 +2,7 @@ package gq
 
 type Topic interface {
 	Type() string
-	Push(data []byte) error
+	Push([]byte) error
 	Pop() (string, []byte, error)
 	Confirm(string) error
 	Close()
