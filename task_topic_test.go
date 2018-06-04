@@ -15,14 +15,25 @@ func TestTaskTopic(t *testing.T) {
 		t.Error(err)
 	}
 	defer topic.Close()
-	topic.Push([]byte("hello world"))
-	key, d, err := topic.Pop()
-	if err != nil && err != ds.ErrEmpty {
-		t.Error(err)
+	for i := 0; i < 10000; i++ {
+		topic.Push([]byte("hello world"))
 	}
-	if err = topic.Confirm(key); err != nil {
-		t.Error(err)
+	t.Log(topic.TaskQueue.Length())
+	t.Log(topic.RetryQueue.Length())
+	for i := 0; i < 10000; i++ {
+		key, d, err := topic.Pop()
+		if err != nil && err != ds.ErrEmpty {
+			t.Error(err)
+		}
+		if err = topic.Confirm(key); err != nil {
+			t.Error(err)
+		}
+		if i == 5000 {
+			t.Log(topic.TaskQueue.Length())
+			t.Log(key)
+			t.Log(string(d))
+		}
 	}
-	t.Log(key)
-	t.Log(string(d))
+	t.Log(topic.TaskQueue.Length())
+	t.Log(topic.RetryQueue.Length())
 }
