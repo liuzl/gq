@@ -19,7 +19,7 @@ func TestTopics(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	t2 := NewInstructionTopic("phone", []byte("Get phone"))
+	t2 := NewInstructionTopic("mobile", "ip;loc")
 
 	item1 := &TopicItem{"task", topic}
 	item2 := &TopicItem{"instruction", t2}
