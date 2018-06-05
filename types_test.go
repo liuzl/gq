@@ -1,9 +1,11 @@
 package gq
 
 import (
+	"fmt"
 	"sync"
 	"testing"
-	//	"github.com/liuzl/goutil"
+
+	"github.com/liuzl/goutil"
 )
 
 type TopicItem struct {
@@ -21,6 +23,17 @@ func TestTopics(t *testing.T) {
 
 	item1 := &TopicItem{"task", topic}
 	item2 := &TopicItem{"instruction", t2}
-	t.Log(item1)
-	t.Log(item2)
+	fmt.Printf("%+v\n", item1)
+	fmt.Printf("%+v\n", item2)
+	i1, err := goutil.JsonMarshalIndent(item1, "", "  ")
+	if err != nil {
+		t.Error(err)
+	}
+	t.Log(string(i1))
+
+	i2, err := goutil.JsonMarshalIndent(item2, "", "  ")
+	if err != nil {
+		t.Error(err)
+	}
+	t.Log(string(i2))
 }
